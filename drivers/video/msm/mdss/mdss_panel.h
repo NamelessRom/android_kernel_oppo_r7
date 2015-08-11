@@ -336,6 +336,10 @@ struct mdss_panel_info {
 	int pwm_period;
 	bool dynamic_fps;
 	bool ulps_feature_enabled;
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/04/08  Add for video mode ulps */
+	bool ulps_suspend_enabled;
+#endif /*VENDOR_EDIT*/
 	bool esd_check_enabled;
 	char dfps_update;
 	int new_fps;
@@ -360,6 +364,10 @@ struct mdss_panel_info {
 	u32 panel_orientation;
 	bool dynamic_switch_pending;
 	bool is_lpm_mode;
+//#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/07/21  Add for LCD rotate 180 degree */
+	bool is_panel_inverted;
+//#endif /*VENDOR_EDIT*/
 
 	struct mdss_mdp_pp_tear_check te;
 

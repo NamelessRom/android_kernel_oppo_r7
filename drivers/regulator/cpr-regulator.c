@@ -290,6 +290,10 @@ struct cpr_regulator {
 	bool		is_cpr_suspended;
 };
 
+#ifdef VENDOR_EDIT
+extern bool ext_apc_buck_is_fan53555;
+#endif
+
 #define CPR_DEBUG_MASK_IRQ	BIT(0)
 #define CPR_DEBUG_MASK_API	BIT(1)
 
@@ -1514,8 +1518,19 @@ static int cpr_pvs_init(struct platform_device *pdev,
 	size_t buflen;
 	char *buf;
 
+	#ifndef VENDOR_EDIT /*dengnw@bsp.drv add two dcdc chip 20150115*/
 	rc = of_property_read_u32(of_node, "qcom,cpr-apc-volt-step",
 					&cpr_vreg->step_volt);
+	#else
+	if (ext_apc_buck_is_fan53555)
+		rc = of_property_read_u32(of_node,
+			"qcom,cpr-fan53555-apc-volt-step",
+			&cpr_vreg->step_volt);
+	else
+		rc = of_property_read_u32(of_node,
+			"qcom,cpr-apc-volt-step",
+			&cpr_vreg->step_volt);
+	#endif
 	if (rc < 0) {
 		cpr_err(cpr_vreg, "read cpr-apc-volt-step failed, rc = %d\n",
 			rc);
@@ -2984,6 +2999,7 @@ static int cpr_init_cpr_efuse(struct platform_device *pdev,
 				< cpr_vreg->cpr_fuse_target_quot[i - 1]) {
 			cpr_vreg->cpr_fuse_disable = true;
 			cpr_err(cpr_vreg, "invalid quotient values; permanently disabling CPR\n");
+			goto error;
 		}
 	}
 
@@ -3214,8 +3230,19 @@ static int cpr_init_step_quotient(struct platform_device *pdev,
 
 	if (len == sizeof(u32)) {
 		/* Single step quotient used for all ring oscillators. */
+		#ifndef VENDOR_EDIT/*dengnw@bsp.drv add two dcdc chip 20150115*/
 		rc = of_property_read_u32(of_node, "qcom,cpr-step-quotient",
 					step_quot);
+		#else
+		if (ext_apc_buck_is_fan53555)
+			rc = of_property_read_u32(of_node,
+			  "qcom,cpr-fan53555-step-quotient",
+			  step_quot);
+		else
+			rc = of_property_read_u32(of_node,
+			  "qcom,cpr-step-quotient",
+			  step_quot);
+		#endif
 		if (rc) {
 			cpr_err(cpr_vreg, "could not read qcom,cpr-step-quotient, rc=%d\n",
 				rc);
@@ -3283,12 +3310,33 @@ static int cpr_init_cpr_parameters(struct platform_device *pdev,
 	if (rc)
 		return rc;
 
+	#ifndef VENDOR_EDIT /*dengnw@bsp.drv add two dcdc chip 20150115*/
 	CPR_PROP_READ_U32(cpr_vreg, of_node, "cpr-up-threshold",
 			  &cpr_vreg->up_threshold, rc);
+	#else
+	if (ext_apc_buck_is_fan53555)
+	  CPR_PROP_READ_U32(cpr_vreg, of_node, "cpr-fan53555-up-threshold",
+		  &cpr_vreg->up_threshold, rc);
+	else
+	  CPR_PROP_READ_U32(cpr_vreg, of_node, "cpr-up-threshold",
+		  &cpr_vreg->up_threshold, rc);
+	#endif
+	
 	if (rc)
 		return rc;
+
+	#ifndef VENDOR_EDIT /*dengnw@bsp.drv add two dcdc chip 20150115*/
 	CPR_PROP_READ_U32(cpr_vreg, of_node, "cpr-down-threshold",
 			  &cpr_vreg->down_threshold, rc);
+	#else
+	if (ext_apc_buck_is_fan53555)
+		CPR_PROP_READ_U32(cpr_vreg, of_node, "cpr-fan53555-down-threshold",
+			&cpr_vreg->down_threshold, rc);
+	else
+		CPR_PROP_READ_U32(cpr_vreg, of_node, "cpr-down-threshold",
+      		&cpr_vreg->down_threshold, rc);
+	#endif
+	
 	if (rc)
 		return rc;
 	cpr_info(cpr_vreg, "up threshold = %u, down threshold = %u\n",

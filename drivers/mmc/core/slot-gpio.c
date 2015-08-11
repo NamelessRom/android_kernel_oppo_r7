@@ -62,6 +62,11 @@ static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 	if (unlikely(status < 0))
 		goto out;
 
+#ifdef VENDOR_EDIT
+        //Lycan.Wang@Prd.BasicDrv, 2014-07-10 Add for retry 5 times when new sdcard init error
+        host->detect_change_retry = 5;
+#endif /* VENDOR_EDIT */
+
 	if (status ^ ctx->status) {
 		pr_info("%s: slot status change detected (%d -> %d), GPIO_ACTIVE_%s\n",
 				mmc_hostname(host), ctx->status, status,
@@ -231,6 +236,10 @@ int mmc_gpio_request_cd(struct mmc_host *host, unsigned int gpio)
 			ctx->cd_label, host);
 		if (ret < 0)
 			irq = ret;
+#ifndef VENDOR_EDIT
+//Lycan.Wang@Prd.BasicDrv, 2014-07-10 Add for retry 5 times when new sdcard init error
+    	enable_irq_wake(irq);
+#endif /* VENDOR_EDIT */
 	}
 
 	if (irq < 0)

@@ -699,6 +699,12 @@ static int ffs_ep0_open(struct inode *inode, struct file *file)
 	if (unlikely(ffs->state == FFS_CLOSING))
 		return -EBUSY;
 
+//#ifdef VENDOR_EDIT
+	/*geyixue@bsp.drv   add for QCOM patch  in 20141129*/
+	if (atomic_read(&ffs->opened))
+		return -EBUSY;
+//#endif
+
 	file->private_data = ffs;
 	ffs_data_opened(ffs);
 
