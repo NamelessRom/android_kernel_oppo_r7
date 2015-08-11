@@ -28,6 +28,12 @@
 #include "mdss_panel.h"
 #include "mdss_debug.h"
 
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/08/25  Add for crash when set brightness */
+#include <mach/oppo_project.h>
+#include <mach/oppo_boot_mode.h>
+#endif /*VENDOR_EDIT*/
+
 #define VSYNC_PERIOD 17
 
 struct mdss_dsi_ctrl_pdata *ctrl_list[DSI_CTRL_MAX];
@@ -413,6 +419,8 @@ void mdss_dsi_set_tx_power_mode(int mode, struct mdss_panel_data *pdata)
 	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x3c, data);
 }
 
+#ifndef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/04/08  Modify for video mode ulps */
 void mdss_dsi_sw_reset(struct mdss_panel_data *pdata)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
@@ -440,6 +448,41 @@ void mdss_dsi_sw_reset(struct mdss_panel_data *pdata)
 	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x118, 0x00);
 	wmb();
 }
+#else /*VENDOR_EDIT*/
+void mdss_dsi_sw_reset(struct mdss_panel_data *pdata, bool restore)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	u32 dsi_ctrl;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return;
+	}
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+	dsi_ctrl = MIPI_INP((ctrl_pdata->ctrl_base) + 0x0004);
+	dsi_ctrl &= ~0x01;
+	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x0004, dsi_ctrl);
+	wmb();
+
+	/* turn esc, byte, dsi, pclk, sclk, hclk on */
+	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x11c,
+					0x23f); /* DSI_CLK_CTRL */
+	wmb();
+
+	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x118, 0x01);
+	wmb();
+	MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x118, 0x00);
+	wmb();
+
+	if (restore) {
+		/*Ensure DSI_CTRL is enabled*/
+		MIPI_OUTP((ctrl_pdata->ctrl_base) + 0x0004, (dsi_ctrl | 0x01));
+		wmb();
+	}
+}
+#endif /*VENDOR_EDIT*/
 
 void mdss_dsi_sw_reset_restore(struct mdss_dsi_ctrl_pdata *ctrl)
 {
@@ -508,8 +551,16 @@ static void mdss_dsi_wait_clk_lane_to_stop(struct mdss_dsi_ctrl_pdata *ctrl)
 	/* force clk lane tx stop -- bit 20 */
 	mdss_dsi_cfg_lane_ctrl(ctrl, BIT(20), 1);
 
+#ifndef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/06/12  Modify for mdss too much log goto dump */
 	if (mdss_dsi_poll_clk_lane(ctrl) == false)
 		pr_err("%s: clk lane recovery failed\n", __func__);
+#else /*VENDOR_EDIT*/
+	if (mdss_dsi_poll_clk_lane(ctrl) == false)
+		pr_err("%s: clk lane recovery failed\n", __func__);
+	else
+		ctrl->clk_lane_cnt = 0; 
+#endif /*VENDOR_EDIT*/
 
 	/* clear clk lane tx stop -- bit 20 */
 	mdss_dsi_cfg_lane_ctrl(ctrl, BIT(20), 0);
@@ -863,7 +914,12 @@ void mdss_dsi_controller_cfg(int enable,
 			       sleep_us, timeout_us)) {
 		pr_debug("%s: DSI status=%x\n", __func__, status);
 		pr_debug("%s: Doing sw reset\n", __func__);
+#ifndef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/04/08  Modify for video mode ulps */
 		mdss_dsi_sw_reset(pdata);
+#else /*VENDOR_EDIT*/
+		mdss_dsi_sw_reset(pdata, false);
+#endif /*VENDOR_EDIT*/
 	}
 
 	dsi_ctrl = MIPI_INP((ctrl_pdata->ctrl_base) + 0x0004);
@@ -984,7 +1040,16 @@ static int mdss_dsi_read_status(struct mdss_dsi_ctrl_pdata *ctrl)
 	return mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
-
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/01/09  Add for 14045 17LCD ESD */
+extern u32 mdss_dsi_panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl, char cmd0,
+		char cmd1, void (*fxn)(int), char *rbuf, int len);
+static char esd_read_14045[3];
+static char esd_read_15005_45h[10];
+static char esd_read_15005_09h[10];
+int enter_esd_15005 = 0;
+extern int lcd_dev;
+#endif /*VENDOR_EDIT*/
 /**
  * mdss_dsi_reg_status_check() - Check dsi panel status through reg read
  * @ctrl_pdata: pointer to the dsi controller structure
@@ -998,12 +1063,18 @@ static int mdss_dsi_read_status(struct mdss_dsi_ctrl_pdata *ctrl)
 int mdss_dsi_reg_status_check(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
 	int ret = 0;
+	int i = 0;
 
 	if (ctrl_pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		return 0;
 	}
-
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/01/09  Add for 14045 17LCD ESD */
+	esd_read_14045[0] = 0;
+	esd_read_14045[1] = 0;
+	esd_read_14045[2] = 0;
+#endif /*VENDOR_EDIT*/
 	pr_debug("%s: Checking Register status\n", __func__);
 
 	mdss_dsi_clk_ctrl(ctrl_pdata, DSI_ALL_CLKS, 1);
@@ -1011,6 +1082,8 @@ int mdss_dsi_reg_status_check(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	if (ctrl_pdata->status_cmds.link_state == DSI_HS_MODE)
 		mdss_dsi_set_tx_power_mode(0, &ctrl_pdata->panel_data);
 
+#ifndef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/01/09  Modify for 14045 17LCD ESD */
 	ret = mdss_dsi_read_status(ctrl_pdata);
 
 	if (ctrl_pdata->status_cmds.link_state == DSI_HS_MODE)
@@ -1021,6 +1094,113 @@ int mdss_dsi_reg_status_check(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	} else {
 		pr_err("%s: Read status register returned error\n", __func__);
 	}
+#else /*VENDOR_EDIT*/
+	if(!is_project(OPPO_14045)){
+		if(is_project(OPPO_15005)&&(lcd_dev==LCD_15005_TRULY_HX8379C)){
+			esd_read_15005_45h[0]=0;
+			esd_read_15005_45h[0]=1;
+			mdss_dsi_panel_cmd_read(ctrl_pdata,0x45,0x00,NULL,&esd_read_15005_45h[0],10);
+			i = 0;
+#ifndef VENDOR_EDIT
+/* YongPeng.Yi@SWDP.MultiMedia, 2015/04/20  Delete for 15005 */
+			while(i<4){
+				pr_err("[YYP]  esd_read_15005 - 0x45[%d] = %x\n", i, esd_read_15005_45h[i]);
+				i++;
+			}
+#endif /*VENDOR_EDIT*/
+
+			esd_read_15005_09h[0]=0;
+			esd_read_15005_09h[1]=0;
+			esd_read_15005_09h[2]=0;
+			esd_read_15005_09h[3]=0;
+			mdss_dsi_panel_cmd_read(ctrl_pdata,0x09,0x00,NULL,&esd_read_15005_09h[0],10);
+#ifndef VENDOR_EDIT
+/* YongPeng.Yi@SWDP.MultiMedia, 2015/04/20  Delete for 15005 START */
+			i = 0;
+			while(i<4){
+				pr_err("[YYP]  esd_read_15005 - 0x09[%d] = %x\n", i, esd_read_15005_09h[i]);
+				i++;
+			}
+/* YongPeng.Yi@SWDP.MultiMedia END */
+#endif /*VENDOR_EDIT*/
+			if (ctrl_pdata->status_cmds.link_state == DSI_HS_MODE)
+				mdss_dsi_set_tx_power_mode(1, &ctrl_pdata->panel_data);
+
+			if(esd_read_15005_45h[0]!=0x3 || esd_read_15005_45h[1]!=0x5f || esd_read_15005_09h[0]!=0x80 || esd_read_15005_09h[1]!=0x73 || esd_read_15005_09h[2]!=0x06){
+				pr_err("%s: Read status register returned error\n", __func__);
+				enter_esd_15005 = 1;
+				ret =  -EINVAL;
+			} else{
+				pr_err("%s: Read status register returned ok\n", __func__);
+				ret = 1;
+			}
+		}else if(is_project(OPPO_15025)&&(lcd_dev==LCD_15025_TRULY_HX8379C)){
+			esd_read_15005_45h[0]=0;
+			esd_read_15005_45h[0]=1;
+			mdss_dsi_panel_cmd_read(ctrl_pdata,0x45,0x00,NULL,&esd_read_15005_45h[0],10);
+			i = 0;
+#ifndef VENDOR_EDIT
+/* YongPeng.Yi@SWDP.MultiMedia, 2015/04/20  Delete for 15005 */
+			while(i<4){
+				pr_err("[YYP]  esd_read_15025 - 0x45[%d] = %x\n", i, esd_read_15005_45h[i]);
+				i++;
+			}
+#endif /*VENDOR_EDIT*/
+
+			esd_read_15005_09h[0]=0;
+			esd_read_15005_09h[1]=0;
+			esd_read_15005_09h[2]=0;
+			esd_read_15005_09h[3]=0;
+			mdss_dsi_panel_cmd_read(ctrl_pdata,0x09,0x00,NULL,&esd_read_15005_09h[0],10);
+#ifndef VENDOR_EDIT
+/* YongPeng.Yi@SWDP.MultiMedia, 2015/04/20  Delete for 15005 START */
+			i = 0;
+			while(i<4){
+				pr_err("[YYP]  esd_read_15025 - 0x09[%d] = %x\n", i, esd_read_15005_09h[i]);
+				i++;
+			}
+/* YongPeng.Yi@SWDP.MultiMedia END */
+#endif /*VENDOR_EDIT*/
+			if (ctrl_pdata->status_cmds.link_state == DSI_HS_MODE)
+				mdss_dsi_set_tx_power_mode(1, &ctrl_pdata->panel_data);
+
+			if(esd_read_15005_45h[0]!=0x3 || esd_read_15005_45h[1]!=0x5f || esd_read_15005_09h[0]!=0x80 || esd_read_15005_09h[1]!=0x73 || esd_read_15005_09h[2]!=0x06){
+				pr_err("%s: Read status register returned error\n", __func__);
+				enter_esd_15005 = 1;
+				ret =  -EINVAL;
+			} else{
+				pr_err("%s: Read status register returned ok\n", __func__);
+				ret = 1;
+			}
+		}else{
+			ret = mdss_dsi_read_status(ctrl_pdata);
+
+			if (ctrl_pdata->status_cmds.link_state == DSI_HS_MODE)
+				mdss_dsi_set_tx_power_mode(1, &ctrl_pdata->panel_data);
+
+			if (ret == 0) {
+				ret = ctrl_pdata->check_read_status(ctrl_pdata);
+			} else {
+				pr_err("%s: Read status register returned error\n", __func__);
+			}
+		}
+	}else{
+		mdss_dsi_panel_cmd_read(ctrl_pdata,0x0a,0x00,NULL,&esd_read_14045[0],1);
+		mdss_dsi_panel_cmd_read(ctrl_pdata,0x09,0x00,NULL,&esd_read_14045[1],1);
+		mdss_dsi_panel_cmd_read(ctrl_pdata,0xac,0x00,NULL,&esd_read_14045[2],1);
+		//pr_err("0x0a = 0x%x   0x09 = 0x%x   0xac=0x%x \n",esd_read_14045[0],esd_read_14045[1],esd_read_14045[2]);
+
+		if (ctrl_pdata->status_cmds.link_state == DSI_HS_MODE)
+			mdss_dsi_set_tx_power_mode(1, &ctrl_pdata->panel_data);
+
+		if(esd_read_14045[0]!=0x9c || esd_read_14045[1]!=0x80 || esd_read_14045[2]!=0x00){
+			pr_err("%s: Read status register returned error\n", __func__);
+			ret =  -EINVAL;
+		}else{
+			ret = 1;
+		}
+	}
+#endif /*VENDOR_EDIT*/
 
 	mdss_dsi_clk_ctrl(ctrl_pdata, DSI_ALL_CLKS, 0);
 	pr_debug("%s: Read register done with ret: %d\n", __func__, ret);
@@ -1807,9 +1987,16 @@ static int dsi_event_thread(void *data)
 				mdss_dsi_clk_ctrl(ctrl, DSI_ALL_CLKS, 0);
 			}
 		}
-
+#ifdef VENDOR_EDIT //Modify by Tong.han@Bsp.group.TP.BL 2014-9-30 ,for 14043 screen blink
+					/*YongPeng.Yi@PhoneSW.Multimedia, 2015/01/30 Add for 15005 BOE LCD screen blink*/
+	if(!is_project(OPPO_14043)&&!is_project(OPPO_14037)&&!(is_project(OPPO_15005)||is_project(OPPO_15025))&&!is_project(OPPO_15057)){
 		if (todo & DSI_EV_DSI_FIFO_EMPTY)
 			mdss_dsi_sw_reset_restore(ctrl);
+	}
+#else
+	if (todo & DSI_EV_DSI_FIFO_EMPTY)
+		mdss_dsi_sw_reset_restore(ctrl);
+#endif/*VENDOR_EDIT*/
 
 		if (todo & DSI_EV_DLNx_FIFO_OVERFLOW) {
 			mutex_lock(&dsi_mtx);
@@ -1840,6 +2027,8 @@ static int dsi_event_thread(void *data)
 			mutex_unlock(&dsi_mtx);
 		}
 
+#ifndef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/03/04  Modify for 14041 15005 ftm sleep reboot */
 		if (todo & DSI_EV_MDP_BUSY_RELEASE) {
 			pr_debug("%s: Handling MDP_BUSY_RELEASE event\n",
 							__func__);
@@ -1852,7 +2041,23 @@ static int dsi_event_thread(void *data)
 			/* enable dsi error interrupt */
 			mdss_dsi_err_intr_ctrl(ctrl, DSI_INTR_ERROR_MASK, 1);
 		}
+#else /*VENDOR_EDIT*/
+		if(!(MSM_BOOT_MODE__FACTORY == get_boot_mode() && (is_project(OPPO_14043) || is_project(OPPO_14037) 
+			||is_project(OPPO_15005) || is_project(OPPO_15057) ||is_project(OPPO_15025)))){
+			if (todo & DSI_EV_MDP_BUSY_RELEASE) {
+				pr_debug("%s: Handling MDP_BUSY_RELEASE event\n",
+								__func__);
+				spin_lock_irqsave(&ctrl->mdp_lock, flag);
+				ctrl->mdp_busy = false;
+				mdss_dsi_disable_irq_nosync(ctrl, DSI_MDP_TERM);
+				complete(&ctrl->mdp_comp);
+				spin_unlock_irqrestore(&ctrl->mdp_lock, flag);
 
+				/* enable dsi error interrupt */
+				mdss_dsi_err_intr_ctrl(ctrl, DSI_INTR_ERROR_MASK, 1);
+			}
+		}
+#endif /*VENDOR_EDIT*/
 		if (todo & DSI_EV_STOP_HS_CLK_LANE)
 			mdss_dsi_stop_hs_clk_lane(ctrl, arg);
 	}
@@ -1920,17 +2125,37 @@ void mdss_dsi_fifo_status(struct mdss_dsi_ctrl_pdata *ctrl)
 	if (status & 0xcccc4489) {
 		MIPI_OUTP(base + 0x000c, status);
 		pr_err("%s: status=%x\n", __func__, status);
+#ifndef VENDOR_EDIT
+/*xiaori.yuan@PhoneSW.Multimedia, 2015/02/10 Add for  14043 15005 BOE LCD screen blink*/
 		if (status & 0x44440000) {/* DLNx_HS_FIFO_OVERFLOW */
 			dsi_send_events(ctrl, DSI_EV_DLNx_FIFO_OVERFLOW, 0);
 			/* Ignore FIFO EMPTY when overflow happens */
 			status = status & 0xeeeeffff;
 		}
+#else /*VENDOR_EDIT*/
+		if(!is_project(OPPO_14043)&&!is_project(OPPO_14037)&&!(is_project(OPPO_15005)||is_project(OPPO_15025))&&!is_project(OPPO_15057)){
+			if (status & 0x44440000) {/* DLNx_HS_FIFO_OVERFLOW */
+				dsi_send_events(ctrl, DSI_EV_DLNx_FIFO_OVERFLOW, 0);
+				/* Ignore FIFO EMPTY when overflow happens */
+				status = status & 0xeeeeffff;
+			}
+		}
+#endif /*VENDOR_EDIT*/
 		if (status & 0x0080)  /* CMD_DMA_FIFO_UNDERFLOW */
 			dsi_send_events(ctrl, DSI_EV_MDP_FIFO_UNDERFLOW, 0);
 			MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0", "dsi1",
 						"edp", "hdmi", "panic");
+#ifdef VENDOR_EDIT //Modify by Tong.han@Bsp.group.TP.BL 2014-9-30 ,for 14043 screen blink
+					/*YongPeng.Yi@PhoneSW.Multimedia, 2015/01/30 Add for 15005 BOE LCD screen blink*/
+		if(!is_project(OPPO_14043)&&!is_project(OPPO_14037)&&!(is_project(OPPO_15005)||is_project(OPPO_15025))&&!is_project(OPPO_15057)){
+			if (status & 0x11110000) /* DLN_FIFO_EMPTY */
+				dsi_send_events(ctrl, DSI_EV_DSI_FIFO_EMPTY, 0);
+		}
+#else
 		if (status & 0x11110000) /* DLN_FIFO_EMPTY */
 			dsi_send_events(ctrl, DSI_EV_DSI_FIFO_EMPTY, 0);
+#endif/*VENDOR_EDIT*/
+
 	}
 }
 

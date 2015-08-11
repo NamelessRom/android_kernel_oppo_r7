@@ -249,6 +249,33 @@ enum {
 	DSI_CTRL_MAX,
 };
 
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/01/09  Add for LCD driver */
+enum {
+	LCD_JDI=0,
+	LCD_TRULY,
+	LCD_SHARP,
+	LCD_HX8394_TRULY,
+	LCD_HX8394_TRULY_P3,
+	LCD_HX8394_TRULY_P3_MURA,
+	LCD_BYD,
+	LCD_TM_HX8379,
+	LCD_TM_HX8392B,
+	LCD_TM_NT35512S,
+	LCD_BOE_HX8379S,
+	LCD_JDI_NT35521,
+	LCD_15005_TRULY_HX8379C,
+	LCD_15025_TM_HX8379,
+	LCD_15025_TM_NT35512S,
+	LCD_15025_TRULY_HX8379C,
+	LCD_15025_BOE_HX8379C,
+	LCD_14045_17_VIDEO,
+	LCD_14045_17_CMD,
+	LCD_UNKNOW,
+}; 
+#endif /*VENDOR_EDIT*/
+
+
 /* DSI controller #0 is always treated as a master in broadcast mode */
 #define DSI_CTRL_MASTER		DSI_CTRL_0
 #define DSI_CTRL_SLAVE		DSI_CTRL_1
@@ -259,6 +286,7 @@ enum {
 
 #define DSI_EV_PLL_UNLOCKED		0x0001
 #define DSI_EV_MDP_FIFO_UNDERFLOW	0x0002
+/* YongPeng.Yi@PhoneSW.Multimedia, 2014/12/10 Add for ESD  0x0003 - > 0x0004  */
 #define DSI_EV_DSI_FIFO_EMPTY		0x0004
 #define DSI_EV_DLNx_FIFO_OVERFLOW	0x0008
 #define DSI_EV_STOP_HS_CLK_LANE		0x40000000
@@ -295,6 +323,10 @@ struct mdss_dsi_ctrl_pdata {
 	int irq_cnt;
 	int rst_gpio;
 	int disp_en_gpio;
+#ifdef VENDOR_EDIT
+/* Xinqin.Yang@PhoneSW.Multimedia, 2014/08/19  Add for -5V */
+    int disp_en_negative_gpio;
+#endif /*CONFIG_VENDOR_EDIT*/
 	int bklt_en_gpio;
 	int mode_gpio;
 	int bklt_ctrl;	/* backlight ctrl */
@@ -317,6 +349,10 @@ struct mdss_dsi_ctrl_pdata {
 	struct dsi_panel_cmds on_cmds;
 	struct dsi_panel_cmds off_cmds;
 	struct dsi_panel_cmds status_cmds;
+	#ifdef VENDOR_EDIT
+	/* Yongpeng.Yi@Mobile Phone Software Dept.Driver, 2015/04/28  Add for 14037 tianma lcd power on flick */
+	struct dsi_panel_cmds spec_cmds;
+	#endif
 	u32 status_cmds_rlen;
 	u32 status_value;
 	u32 status_error_count;
@@ -337,6 +373,12 @@ struct mdss_dsi_ctrl_pdata {
 	struct mutex clk_lane_mutex;
 
 	bool ulps;
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/04/07  Add for video mode ulps */
+	bool mmss_clamp;
+	u32 ulps_clamp_ctrl_off;
+	u32 ulps_phyrst_ctrl_off;
+#endif /*VENDOR_EDIT*/
 
 	struct dsi_buf tx_buf;
 	struct dsi_buf rx_buf;
@@ -375,8 +417,12 @@ void mdss_dsi_clk_req(struct mdss_dsi_ctrl_pdata *ctrl,
 				int enable);
 void mdss_dsi_controller_cfg(int enable,
 				struct mdss_panel_data *pdata);
+#ifndef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/04/07  Modify for video mode ulps */
 void mdss_dsi_sw_reset(struct mdss_panel_data *pdata);
-
+#else /*VENDOR_EDIT*/
+void mdss_dsi_sw_reset(struct mdss_panel_data *pdata, bool restore);
+#endif /*VENDOR_EDIT*/
 irqreturn_t mdss_dsi_isr(int irq, void *ptr);
 void mdss_dsi_irq_handler_config(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
 
@@ -406,6 +452,11 @@ int mdss_dsi_bta_status_check(struct mdss_dsi_ctrl_pdata *ctrl);
 int mdss_dsi_reg_status_check(struct mdss_dsi_ctrl_pdata *ctrl);
 bool __mdss_dsi_clk_enabled(struct mdss_dsi_ctrl_pdata *ctrl, u8 clk_type);
 int mdss_dsi_ulps_config(struct mdss_dsi_ctrl_pdata *ctrl, int enable);
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/04/07  Add for video mode ulps */
+int mdss_dsi_clamp_ctrl(struct mdss_dsi_ctrl_pdata *ctrl, int enable);
+void mdss_dsi_ctrl_setup(struct mdss_panel_data *pdata);
+#endif /*VENDOR_EDIT*/
 
 void mdss_dsi_get_hw_revision(struct mdss_dsi_ctrl_pdata *ctrl);
 
@@ -414,6 +465,10 @@ int mdss_dsi_panel_init(struct device_node *node,
 		bool cmd_cfg_cont_splash);
 int mdss_panel_get_dst_fmt(u32 bpp, char mipi_mode, u32 pixel_packing,
 				char *dst_format);
+#ifdef VENDOR_EDIT
+/* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2015/04/07  Add for video mode ulps */
+void mdss_dsi_dln0_phy_err(struct mdss_dsi_ctrl_pdata *ctrl);
+#endif /*VENDOR_EDIT*/
 int mdss_dsi_register_recovery_handler(struct mdss_dsi_ctrl_pdata *ctrl,
 		struct mdss_intf_recovery *recovery);
 

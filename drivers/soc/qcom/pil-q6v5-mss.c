@@ -320,6 +320,11 @@ static int pil_mss_loadable_init(struct modem_data *drv,
 	if (IS_ERR(q6->rom_clk))
 		return PTR_ERR(q6->rom_clk);
 
+#ifdef VENDOR_EDIT
+	/* dengnw@bsp.drv	add QCM patch for 3G ram in 20150303*/
+	q6->mba_region = of_property_read_bool(pdev->dev.of_node,
+						"qcom,pil-mba-region");
+#endif
 	ret = pil_desc_init(q6_desc);
 
 	return ret;
