@@ -87,4 +87,13 @@ static inline bool qpnp_pon_check_hard_reset_stored(void)
 }
 #endif
 
+
+#ifdef VENDOR_EDIT
+//rendong.shi@Basic.boot ,2015/03/12, add for silence mode
+
+int qpnp_silence_write(u16 addr, u8 val);
+
+#endif
+
+
 #endif
